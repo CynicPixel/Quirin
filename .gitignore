@@ -1,0 +1,33 @@
+# Python cache / build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+venv/
+
+# Test and coverage outputs
+.coverage
+.coverage.*
+.pytest_cache/
+
+# Tooling caches
+.mypy_cache/
+.ruff_cache/
+.cache/
+
+# Editors / IDEs
+.vscode/
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+

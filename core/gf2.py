@@ -2,8 +2,6 @@
 from __future__ import annotations
 from typing import List, Tuple
 import numpy as np
-import math
-import copy
 
 # Bit-packed GF(2) matrix for CNOT linear transforms.
 # Each row is stored as an array of np.uint64 words.
@@ -36,6 +34,9 @@ class BinaryMatrix:
         M.rows = self.rows.copy()
         return M
 
+    def copy(self) -> "BinaryMatrix":
+        return self.clone()
+
     # low-level helpers
     def _xor_rows(self, src: int, tgt: int):
         # row_tgt ^= row_src
@@ -45,6 +46,11 @@ class BinaryMatrix:
         if src == tgt:
             return
         self._xor_rows(src, tgt)
+
+    def apply_cnot(self, control: int, target: int):
+        if not (0 <= control < self.n and 0 <= target < self.n):
+            raise IndexError("control/target out of range")
+        self.apply_row_xor(control, target)
 
     def apply_rowops_sequence(self, seq: List[Tuple[int, int]]):
         for src, tgt in seq:
@@ -68,6 +74,43 @@ class BinaryMatrix:
             cnt += int(w).bit_count()
         return cnt
 
+    def get_bit(self, row: int, col: int) -> int:
+        if not (0 <= row < self.n and 0 <= col < self.n):
+            raise IndexError("row/col out of range")
+        word = col // 64
+        bit = col % 64
+        return (int(self.rows[row, word]) >> bit) & 1
+
+    def count_off_diagonal_ones(self) -> int:
+        diag = 0
+        for i in range(self.n):
+            diag += self.get_bit(i, i)
+        return self.count_ones() - diag
+
+    def is_identity(self) -> bool:
+        for i in range(self.n):
+            if not self.get_bit(i, i):
+                return False
+            if self.row_weight(i) != 1:
+                return False
+        return True
+
+    def find_pivot_operations(self) -> List[Tuple[int, int]]:
+        ops: List[Tuple[int, int]] = []
+        for row in range(self.n):
+            for word_idx in range(self.words):
+                value = int(self.rows[row, word_idx])
+                if not value:
+                    continue
+                base_col = word_idx * 64
+                while value:
+                    lsb = value & -value
+                    bit_index = base_col + (lsb.bit_length() - 1)
+                    if bit_index < self.n and bit_index != row:
+                        ops.append((bit_index, row))
+                    value ^= lsb
+        return ops
+
     def to_dense_numpy(self) -> np.ndarray:
         """Return an n x n uint8 numpy array (useful for small n debugging)."""
         out = np.zeros((self.n, self.n), dtype=np.uint8)
@@ -88,6 +131,31 @@ class BinaryMatrix:
         if self.n != other.n:
             return False
         return bool((self.rows ^ other.rows).sum() == 0)
+
+    def evaluate_rowop_benefit(self, src: int, tgt: int) -> int:
+        before = self.row_weight(tgt)
+        after = 0
+        for src_word, tgt_word in zip(self.rows[src], self.rows[tgt]):
+            after += int(int(src_word) ^ int(tgt_word)).bit_count()
+        return before - after
+
+    def evaluate_operation_benefit(self, source: int, target: int) -> int:
+        return self.evaluate_rowop_benefit(source, target)
+
+    def apply_row_operation(self, src: int, tgt: int) -> Tuple[int, int]:
+        self.apply_row_xor(src, tgt)
+        return (src, tgt)
+
+    def print_matrix(self):
+        dense = self.to_dense_numpy()
+        print("Matrix state:")
+        for idx, row in enumerate(dense):
+            row_bits = " ".join(str(bit) for bit in row)
+            print(f"Row {idx}: {row_bits}")
+        print(
+            f"Ones count: {self.count_ones()}, Off-diagonal: {self.count_off_diagonal_ones()}"
+        )
+        print()
 
     def to_cnot_sequence(self, rowops: List[Tuple[int, int]]) -> List[Tuple[int,int]]:
         # rowops represent R_t <- R_t + R_s ; convert directly into CNOT (control=src,target=tgt)

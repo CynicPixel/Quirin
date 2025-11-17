@@ -1,0 +1,10 @@
+click
+stim
+pyzx
+qiskit
+qiskit-aer
+numpy
+networkx
+pytest
+matplotlib
+pylatexenc
